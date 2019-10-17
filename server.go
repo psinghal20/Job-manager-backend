@@ -212,7 +212,7 @@ func main() {
 	// Setup jobs queue
 	jobs = make(map[uuid.UUID]JobInterface)
 	r := initRouter()
-	http.ListenAndServe(":3333", r)
+	http.ListenAndServe(":8080", r)
 }
 
 func initRouter() http.Handler {
