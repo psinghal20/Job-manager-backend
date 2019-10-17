@@ -2,10 +2,9 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"io"
+	"log"
 	"net/http"
-	"time"
 
 	"github.com/go-chi/chi"
 	"github.com/go-chi/chi/middleware"
@@ -28,89 +27,37 @@ const (
 	Resume
 )
 
-type JobInterface interface {
-	run()
-	halt() error
-	resume() error
-	stop() error
-	clean() error
-}
-
-type Job struct {
-	status  Status
-	jobID   uuid.UUID
-	sigChan chan Signal
-}
-
 type JobRequest struct {
 	Type string
-}
-
-func (job *Job) run() {
-	for {
-		select {
-		case sig := <-job.sigChan:
-			fmt.Println("GOT A SIG: ", sig)
-			switch sig {
-			case Halt:
-				job.status = Halted
-			case Stop:
-				job.status = Stopped
-			}
-		default:
-			switch job.status {
-			case Running:
-				fmt.Println("Doing Job")
-				time.Sleep(time.Second)
-			case Halted:
-				fmt.Println("Job is halted")
-			case Stopped:
-				fmt.Println("Quiting job: ", job.jobID)
-				return
-			}
-		}
-	}
-}
-
-func (job *Job) halt() error {
-	fmt.Println("Inside halt")
-	job.sigChan <- Halt
-	fmt.Println("Done with halt")
-	return nil
-}
-
-func (job *Job) stop() error {
-	job.sigChan <- Stop
-	job.clean()
-	return nil
-}
-
-func (job *Job) resume() error {
-	job.status = Running
-	return nil
-}
-
-func (job *Job) clean() error {
-	return nil
+	Args map[string]interface{}
 }
 
 var jobs map[uuid.UUID]JobInterface
 
-func parseJobRequest(body io.ReadCloser) JobRequest {
+func parseJobRequest(body io.ReadCloser) (*JobRequest, error) {
 	decoder := json.NewDecoder(body)
-	fmt.Println("Body: ", body)
-	var jobRequest JobRequest
+	jobRequest := &JobRequest{
+		"",
+		make(map[string]interface{}),
+	}
 	err := decoder.Decode(&jobRequest)
 	if err != nil {
-		fmt.Println("Couldn't parse the job request")
+		log.Println("Couldn't parse the job request")
+		return nil, err
 	}
-	return jobRequest
+	return jobRequest, nil
 }
 
 func submitJob(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("Getting a new job!")
 	newJobID := uuid.New()
-	jobRequest := parseJobRequest(r.Body)
+
+	jobRequest, err := parseJobRequest(r.Body)
+	if err != nil {
+		log.Println("Couldn't parse the job request")
+		w.Write([]byte("Invalid Request Format"))
+		return
+	}
+
 	var newJob JobInterface
 	switch jobRequest.Type {
 	case "Simple":
@@ -119,23 +66,33 @@ func submitJob(w http.ResponseWriter, r *http.Request) {
 			jobID:   newJobID,
 			sigChan: make(chan Signal),
 		}
+	default:
+		log.Println("Invalid Job Type")
+		w.Write([]byte("Invalid Job Type"))
+		return
 	}
+
 	jobs[newJobID] = newJob
 	res, err := json.Marshal(newJobID)
 	if err != nil {
-		fmt.Println("Couldn't marshal JobID")
+		log.Println("Couldn't marshal JobID")
+		w.Write([]byte("Error: Couldn't submit the job"))
+		delete(jobs, newJobID)
+		return
 	}
-	fmt.Println(newJobID)
+
 	go newJob.run()
 	w.Write(res)
 }
 
 func haltJob(w http.ResponseWriter, r *http.Request) {
 	jobID := chi.URLParam(r, "jobID")
-	fmt.Println("Halting job: ", jobID)
+	log.Println("Halting job: ", jobID)
 	jobUUID, err := uuid.Parse(jobID)
 	if err != nil {
-		fmt.Println("Error while parsing UUID string")
+		log.Println("Error while parsing UUID from string: ", jobID)
+		w.Write([]byte("Invalid JobID: " + jobID))
+		return
 	}
 	job, ok := jobs[jobUUID]
 	if !ok {
@@ -143,15 +100,19 @@ func haltJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	job.halt()
-	w.Write([]byte("Halted job: " + jobID))
+	res := "Halted job: " + jobID
+	log.Println(res)
+	w.Write([]byte(res))
 }
 
 func stopJob(w http.ResponseWriter, r *http.Request) {
 	jobID := chi.URLParam(r, "jobID")
-	fmt.Println("Stopping job: ", jobID)
+	log.Println("Stopping job: ", jobID)
 	jobUUID, err := uuid.Parse(jobID)
 	if err != nil {
-		fmt.Println("Error while parsing UUID string")
+		log.Println("Error while parsing UUID from string: ", jobID)
+		w.Write([]byte("Invalid JobID: " + jobID))
+		return
 	}
 	job, ok := jobs[jobUUID]
 	if !ok {
@@ -159,16 +120,21 @@ func stopJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	job.stop()
+	job.clean()
 	delete(jobs, jobUUID)
-	w.Write([]byte("Stopped job: " + jobID))
+	res := "Stopped job: " + jobID
+	log.Println(res)
+	w.Write([]byte(res))
 }
 
 func resumeJob(w http.ResponseWriter, r *http.Request) {
 	jobID := chi.URLParam(r, "jobID")
-	fmt.Println("Resuming job: ", jobID)
+	log.Println("Resuming job: ", jobID)
 	jobUUID, err := uuid.Parse(jobID)
 	if err != nil {
-		fmt.Println("Error while parsing UUID string")
+		log.Println("Error while parsing UUID from string: ", jobID)
+		w.Write([]byte("Invalid JobID: " + jobID))
+		return
 	}
 	job, ok := jobs[jobUUID]
 	if !ok {
@@ -176,11 +142,18 @@ func resumeJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	job.resume()
-	w.Write([]byte("Resumed job: " + jobID))
+	res := "Resumed job: " + jobID
+	log.Println(res)
+	w.Write([]byte(res))
 }
 
 func main() {
 	jobs = make(map[uuid.UUID]JobInterface)
+	r := initRouter()
+	http.ListenAndServe(":3333", r)
+}
+
+func initRouter() http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
 	r.Use(middleware.Logger)
@@ -188,5 +161,5 @@ func main() {
 	r.Get("/halt/{jobID}", haltJob)
 	r.Get("/stop/{jobID}", stopJob)
 	r.Get("/resume/{jobID}", resumeJob)
-	http.ListenAndServe(":3333", r)
+	return r
 }
