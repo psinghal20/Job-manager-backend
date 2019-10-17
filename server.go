@@ -2,9 +2,11 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi"
 	"github.com/go-chi/chi/middleware"
@@ -20,6 +22,14 @@ type JobRequest struct {
 }
 
 var jobs map[uuid.UUID]JobInterface
+
+func marshalError(err error, jobID string) []byte {
+	errMap := make(map[string]string)
+	errMap["jobID"] = jobID
+	errMap["error"] = err.Error()
+	buf, err := json.Marshal(errMap)
+	return buf
+}
 
 func parseJobRequest(body io.ReadCloser) (*JobRequest, error) {
 	decoder := json.NewDecoder(body)
@@ -42,7 +52,7 @@ func submitJob(w http.ResponseWriter, r *http.Request) {
 	jobRequest, err := parseJobRequest(r.Body)
 	if err != nil {
 		log.Println("Couldn't parse the job request")
-		w.Write([]byte("Invalid Request Format"))
+		w.Write([]byte(marshalError(errors.New("Invalid Job request format"), "")))
 		return
 	}
 
@@ -50,107 +60,128 @@ func submitJob(w http.ResponseWriter, r *http.Request) {
 	switch jobRequest.Type {
 	case Simple:
 		newJob = &Job{
-			status:  Running,
+			status:  Submitted,
 			jobID:   newJobID,
 			sigChan: make(chan Signal),
 		}
+	case Export:
+		fromDate, err := time.Parse(timeLayout, jobRequest.Args["from_date"].(string))
+		if err != nil {
+			w.Write([]byte(marshalError(errors.New("Invalid from_date format"), "")))
+			return
+		}
+		toDate, err := time.Parse(timeLayout, jobRequest.Args["to_date"].(string))
+		if err != nil {
+			w.Write([]byte(marshalError(errors.New("Invalid to_date format"), "")))
+			return
+		}
+		newJob = &ExportJob{
+			status:   Submitted,
+			jobID:    newJobID,
+			sigChan:  make(chan Signal),
+			fromDate: fromDate,
+			toDate:   toDate,
+			curDate:  fromDate.Add(time.Hour * 24),
+		}
 	default:
 		log.Println("Invalid Job Type")
-		w.Write([]byte("Invalid Job Type"))
+		w.Write([]byte(marshalError(errors.New("Invalid Job Type"), "")))
 		return
 	}
 
 	jobs[newJobID] = newJob
-	res, err := json.Marshal(newJobID)
-	if err != nil {
-		log.Println("Couldn't marshal JobID")
-		w.Write([]byte("Error: Couldn't submit the job"))
-		delete(jobs, newJobID)
-		return
-	}
-
 	if err = newJob.start(); err != nil {
-		log.Println("Failed to start the Job")
-		w.Write([]byte("Failed to start the job"))
+		log.Printf("Failed to start the job: %s\nError: %s", newJobID.String(), err.Error())
+		w.Write([]byte(marshalError(err, "")))
 		delete(jobs, newJobID)
 		return
 	}
 
+	res, err := json.Marshal(map[string]string{
+		"result": "Success",
+		"jobID":  newJobID.String(),
+	})
 	w.Write(res)
 }
 
 func haltJob(w http.ResponseWriter, r *http.Request) {
 	jobID := chi.URLParam(r, "jobID")
-	log.Println("Halting job: ", jobID)
 	jobUUID, err := uuid.Parse(jobID)
 	if err != nil {
 		log.Println("Error while parsing UUID from string: ", jobID)
-		w.Write([]byte("Invalid JobID: " + jobID))
+		w.Write([]byte(marshalError(errors.New("Invalid JobID"), jobID)))
 		return
 	}
 	job, ok := jobs[jobUUID]
 	if !ok {
-		w.Write([]byte("Invalid JobID: " + jobID))
+		w.Write([]byte(marshalError(errors.New("Invalid JobID"), jobID)))
 		return
 	}
 
 	if err = job.halt(); err != nil {
-		log.Println("Failed to halt the Job: ", jobID)
-		w.Write([]byte("Failed to halt the job: " + jobID))
+		log.Printf("Failed to stop the job: %s\nError: %s", jobID, err.Error())
+		w.Write([]byte(marshalError(err, jobID)))
 		return
 	}
-	res := "Halted job: " + jobID
-	log.Println(res)
+	res, err := json.Marshal(map[string]string{
+		"result": "Success",
+		"jobID":  jobID,
+	})
+	log.Println("Halted job:", jobID)
 	w.Write([]byte(res))
 }
 
 func stopJob(w http.ResponseWriter, r *http.Request) {
 	jobID := chi.URLParam(r, "jobID")
-	log.Println("Stopping job: ", jobID)
 	jobUUID, err := uuid.Parse(jobID)
 	if err != nil {
 		log.Println("Error while parsing UUID from string: ", jobID)
-		w.Write([]byte("Invalid JobID: " + jobID))
+		w.Write([]byte(marshalError(errors.New("Invalid JobID"), jobID)))
 		return
 	}
 	job, ok := jobs[jobUUID]
 	if !ok {
-		w.Write([]byte("Invalid JobID: " + jobID))
+		w.Write([]byte(marshalError(errors.New("Invalid JobID"), jobID)))
 		return
 	}
 	if err = job.stop(); err != nil {
-		log.Println("Failed to stop the Job", jobID)
-		w.Write([]byte("Failed to stop the job: " + jobID))
+		log.Printf("Failed to stop the job: %s\nError: %s\n", jobID, err.Error())
+		w.Write([]byte(marshalError(err, jobID)))
 		return
 	}
 	job.clean()
 	delete(jobs, jobUUID)
-	res := "Stopped job: " + jobID
-	log.Println(res)
+	res, err := json.Marshal(map[string]string{
+		"result": "Success",
+		"jobID":  jobID,
+	})
+	log.Println("Stopped job: ", jobID)
 	w.Write([]byte(res))
 }
 
 func resumeJob(w http.ResponseWriter, r *http.Request) {
 	jobID := chi.URLParam(r, "jobID")
-	log.Println("Resuming job: ", jobID)
 	jobUUID, err := uuid.Parse(jobID)
 	if err != nil {
 		log.Println("Error while parsing UUID from string: ", jobID)
-		w.Write([]byte("Invalid JobID: " + jobID))
+		w.Write([]byte(marshalError(errors.New("Invalid JobID"), jobID)))
 		return
 	}
 	job, ok := jobs[jobUUID]
 	if !ok {
-		w.Write([]byte("Invalid JobID: " + jobID))
+		w.Write([]byte(marshalError(errors.New("Invalid JobID"), jobID)))
 		return
 	}
 	if err = job.resume(); err != nil {
-		log.Println("Failed to resume the Job: ", jobID)
-		w.Write([]byte("Failed to resume the job: " + jobID))
+		log.Printf("Failed to stop the job: %s\nError: %s\n", jobID, err.Error())
+		w.Write([]byte(marshalError(err, jobID)))
 		return
 	}
-	res := "Resumed job: " + jobID
-	log.Println(res)
+	res, err := json.Marshal(map[string]string{
+		"result": "Success",
+		"jobID":  jobID,
+	})
+	log.Println("Resumed Job:", jobID)
 	w.Write([]byte(res))
 }
 
@@ -159,19 +190,19 @@ func detailsJob(w http.ResponseWriter, r *http.Request) {
 	jobUUID, err := uuid.Parse(jobID)
 	if err != nil {
 		log.Println("Error while parsing UUID from string: ", jobID)
-		w.Write([]byte("Invalid JobID: " + jobID))
+		w.Write([]byte(marshalError(errors.New("Invalid JobID"), jobID)))
 		return
 	}
 	job, ok := jobs[jobUUID]
 	if !ok {
-		w.Write([]byte("Invalid JobID: " + jobID))
+		w.Write([]byte(marshalError(errors.New("Invalid JobID"), jobID)))
 		return
 	}
 	details := job.details()
 	res, err := json.Marshal(details)
 	if err != nil {
 		log.Println("Couldn't marshal job details")
-		w.Write([]byte("Error: Couldn't fetch job details"))
+		w.Write([]byte(marshalError(errors.New("Failed to fetch the details"), jobID)))
 		return
 	}
 	w.Write([]byte(res))
