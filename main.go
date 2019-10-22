@@ -32,7 +32,11 @@ type httpError struct {
 	Error string `json:"error" example:"Invalid JobID"`
 }
 
-var jobs map[uuid.UUID]JobInterface
+// JobManager manages the list of submitted jobs
+// It has methods to handle different actions called on these jobs.
+type JobManager struct {
+	jobs map[uuid.UUID]JobInterface
+}
 
 func marshalError(err error, jobID string) []byte {
 	errMap := make(map[string]string)
@@ -66,7 +70,7 @@ func parseJobRequest(c *gin.Context) (*JobRequest, error) {
 // @Failure 400 {object} main.httpError
 // @Failure 500 {object} main.httpError
 // @Router /submit [post]
-func submitJob(c *gin.Context) {
+func (manager *JobManager) submitJob(c *gin.Context) {
 	newJobID := uuid.New()
 
 	jobRequest, err := parseJobRequest(c)
@@ -122,14 +126,14 @@ func submitJob(c *gin.Context) {
 		return
 	}
 
-	jobs[newJobID] = newJob
+	manager.jobs[newJobID] = newJob
 	if err = newJob.start(); err != nil {
 		log.Printf("Failed to start the job: %s\nError: %s", newJobID.String(), err.Error())
 		c.JSON(http.StatusInternalServerError, httpError{
 			"",
 			err.Error(),
 		})
-		delete(jobs, newJobID)
+		delete(manager.jobs, newJobID)
 		return
 	}
 
@@ -152,7 +156,7 @@ func submitJob(c *gin.Context) {
 // @Failure 404 {object} main.httpError
 // @Failure 500 {object} main.httpError
 // @Router /halt/{jobID} [get]
-func haltJob(c *gin.Context) {
+func (manager *JobManager) haltJob(c *gin.Context) {
 	jobID := c.Param("jobID")
 	jobUUID, err := uuid.Parse(jobID)
 	if err != nil {
@@ -163,7 +167,7 @@ func haltJob(c *gin.Context) {
 		})
 		return
 	}
-	job, ok := jobs[jobUUID]
+	job, ok := manager.jobs[jobUUID]
 	if !ok {
 		c.JSON(http.StatusNotFound, httpError{
 			jobID,
@@ -200,7 +204,7 @@ func haltJob(c *gin.Context) {
 // @Failure 404 {object} main.httpError
 // @Failure 500 {object} main.httpError
 // @Router /stop/{jobID} [get]
-func stopJob(c *gin.Context) {
+func (manager *JobManager) stopJob(c *gin.Context) {
 	jobID := c.Param("jobID")
 	jobUUID, err := uuid.Parse(jobID)
 	if err != nil {
@@ -211,7 +215,7 @@ func stopJob(c *gin.Context) {
 		})
 		return
 	}
-	job, ok := jobs[jobUUID]
+	job, ok := manager.jobs[jobUUID]
 	if !ok {
 		c.JSON(http.StatusNotFound, httpError{
 			jobID,
@@ -228,7 +232,7 @@ func stopJob(c *gin.Context) {
 		return
 	}
 	job.clean()
-	delete(jobs, jobUUID)
+	delete(manager.jobs, jobUUID)
 	res := httpResponse{
 		JobID:   jobUUID,
 		Message: "Success",
@@ -249,7 +253,7 @@ func stopJob(c *gin.Context) {
 // @Failure 404 {object} main.httpError
 // @Failure 500 {object} main.httpError
 // @Router /resume/{jobID} [get]
-func resumeJob(c *gin.Context) {
+func (manager *JobManager) resumeJob(c *gin.Context) {
 	jobID := c.Param("jobID")
 	jobUUID, err := uuid.Parse(jobID)
 	if err != nil {
@@ -260,7 +264,7 @@ func resumeJob(c *gin.Context) {
 		})
 		return
 	}
-	job, ok := jobs[jobUUID]
+	job, ok := manager.jobs[jobUUID]
 	if !ok {
 		c.JSON(http.StatusNotFound, httpError{
 			jobID,
@@ -296,7 +300,7 @@ func resumeJob(c *gin.Context) {
 // @Failure 404 {object} main.httpError
 // @Failure 500 {object} main.httpError
 // @Router /details/{jobID} [get]
-func detailsJob(c *gin.Context) {
+func (manager *JobManager) detailsJob(c *gin.Context) {
 	jobID := c.Param("jobID")
 	jobUUID, err := uuid.Parse(jobID)
 	if err != nil {
@@ -307,7 +311,7 @@ func detailsJob(c *gin.Context) {
 		})
 		return
 	}
-	job, ok := jobs[jobUUID]
+	job, ok := manager.jobs[jobUUID]
 	if !ok {
 		c.JSON(http.StatusNotFound, httpError{
 			jobID,
@@ -337,21 +341,23 @@ func detailsJob(c *gin.Context) {
 // @description Job processing backend API for Atlan Collect
 func main() {
 	// Setup jobs queue
-	jobs = make(map[uuid.UUID]JobInterface)
-	r := initRouter()
+	manager := &JobManager{
+		jobs: make(map[uuid.UUID]JobInterface),
+	}
+	r := initRouter(manager)
 
 	r.Run(":8080")
 }
 
-func initRouter() *gin.Engine {
+func initRouter(manager *JobManager) *gin.Engine {
 	r := gin.Default()
 	r.Use(gin.Logger())
 	r.Use(gin.Recovery())
-	r.POST("/submit", submitJob)
-	r.GET("/halt/:jobID", haltJob)
-	r.GET("/stop/:jobID", stopJob)
-	r.GET("/resume/:jobID", resumeJob)
-	r.GET("/details/:jobID", detailsJob)
+	r.POST("/submit", manager.submitJob)
+	r.GET("/halt/:jobID", manager.haltJob)
+	r.GET("/stop/:jobID", manager.stopJob)
+	r.GET("/resume/:jobID", manager.resumeJob)
+	r.GET("/details/:jobID", manager.detailsJob)
 	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 	return r
 }
