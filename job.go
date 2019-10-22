@@ -11,12 +11,12 @@ import (
 // JobInterface is the common interface that every
 // different job should implement
 type JobInterface interface {
-	start() error
-	halt() error
-	resume() error
-	stop() error
-	clean() error
-	details() map[string]interface{}
+	start() error                    // Start the job processing
+	halt() error                     // Halt or pause the job processing
+	resume() error                   // Resume any halted/paused job
+	stop() error                     // Stop processing of any running or halted job
+	clean() error                    // Clean method can be used to rollback any changes when job is stopped
+	details() map[string]interface{} // Return details about the Job as a Map
 }
 
 // Job is a generic simple job
