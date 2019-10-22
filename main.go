@@ -122,7 +122,6 @@ func (manager *JobManager) submitJob(c *gin.Context) {
 			"",
 			"Invalid Job Type",
 		})
-		// w.Write([]byte(marshalError(errors.New("Invalid Job Type"), "")))
 		return
 	}
 
