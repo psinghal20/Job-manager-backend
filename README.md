@@ -3,7 +3,7 @@
 This project is a simple Job manager backend to submit different kinds of jobs to a processing pipeline. It supports basic operations of submitting, pausing, resuming, stopping and checking details of a job. It is written in go with [Gin](https://github.com/gin-gonic/gin) framework. 
 
 ## Prequisites
-go
+- Go
 
 ## Quick start
 - Clone the repo
@@ -30,7 +30,7 @@ Start the docker container by running:
     GET /swagger/
 
 The API takes `jobID` as path argument for `GET` routes and the `POST` routes take a JSON body of format:
-```json
+```json5
     {
         "Type": "Simple", // There are two types of jobs currently supported: Simple and Export
         "args": {
