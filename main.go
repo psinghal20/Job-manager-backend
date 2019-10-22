@@ -346,6 +346,8 @@ func main() {
 	}
 	r := initRouter(manager)
 
+	log.Println("Swagger docs can be found on http://localhost:8080/swagger/index.html")
+
 	r.Run(":8080")
 }
 
