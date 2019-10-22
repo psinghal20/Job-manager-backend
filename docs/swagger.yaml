@@ -1,9 +1,23 @@
 definitions:
+  main.JobRequest:
+    properties:
+      Type:
+        example: Simple
+        type: string
+      args:
+        type: object
+    type: object
+  main.httpError:
+    properties:
+      error:
+        example: Invalid JobID
+        type: string
+      jobID:
+        example: 55e75f6c-24f8-49b5-9e62-a268db7370e9
+        type: string
+    type: object
   main.httpResponse:
     properties:
-      code:
-        example: 200
-        type: integer
       details:
         type: object
       jobID:
@@ -39,6 +53,14 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/main.httpResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/main.httpError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.httpError'
       summary: Fetch details about a submitted job
   /halt/{jobID}:
     get:
@@ -59,6 +81,14 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/main.httpResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/main.httpError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.httpError'
       summary: Halt a running job
   /resume/{jobID}:
     get:
@@ -79,6 +109,14 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/main.httpResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/main.httpError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.httpError'
       summary: Resume a pause/halted job
   /stop/{jobID}:
     get:
@@ -99,6 +137,14 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/main.httpResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/main.httpError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.httpError'
       summary: Stop a  job
   /submit:
     post:
@@ -106,6 +152,13 @@ paths:
       - application/json
       description: Job processing backend API for Atlan Collect
       operationId: submit-job
+      parameters:
+      - description: Submit a job
+        in: body
+        name: jobRequest
+        required: true
+        schema:
+          $ref: '#/definitions/main.JobRequest'
       produces:
       - application/json
       responses:
@@ -113,5 +166,13 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/main.httpResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/main.httpError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/main.httpError'
       summary: Submit a job for processing
 swagger: "2.0"

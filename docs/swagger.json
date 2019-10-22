@@ -34,6 +34,18 @@
                         "schema": {
                             "$ref": "#/definitions/main.httpResponse"
                         }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/main.httpError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/main.httpError"
+                        }
                     }
                 }
             }
@@ -63,6 +75,18 @@
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/main.httpResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/main.httpError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/main.httpError"
                         }
                     }
                 }
@@ -94,6 +118,18 @@
                         "schema": {
                             "$ref": "#/definitions/main.httpResponse"
                         }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/main.httpError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/main.httpError"
+                        }
                     }
                 }
             }
@@ -124,6 +160,18 @@
                         "schema": {
                             "$ref": "#/definitions/main.httpResponse"
                         }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/main.httpError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/main.httpError"
+                        }
                     }
                 }
             }
@@ -139,11 +187,34 @@
                 ],
                 "summary": "Submit a job for processing",
                 "operationId": "submit-job",
+                "parameters": [
+                    {
+                        "description": "Submit a job",
+                        "name": "jobRequest",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/main.JobRequest"
+                        }
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/main.httpResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/main.httpError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/main.httpError"
                         }
                     }
                 }
@@ -151,13 +222,34 @@
         }
     },
     "definitions": {
+        "main.JobRequest": {
+            "type": "object",
+            "properties": {
+                "Type": {
+                    "type": "string",
+                    "example": "Simple"
+                },
+                "args": {
+                    "type": "object"
+                }
+            }
+        },
+        "main.httpError": {
+            "type": "object",
+            "properties": {
+                "error": {
+                    "type": "string",
+                    "example": "Invalid JobID"
+                },
+                "jobID": {
+                    "type": "string",
+                    "example": "55e75f6c-24f8-49b5-9e62-a268db7370e9"
+                }
+            }
+        },
         "main.httpResponse": {
             "type": "object",
             "properties": {
-                "code": {
-                    "type": "integer",
-                    "example": 200
-                },
                 "details": {
                     "type": "object"
                 },

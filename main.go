@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"errors"
 	"log"
 	"net/http"
 	"time"
@@ -18,7 +17,7 @@ import (
 // Type is from a list of types of jobs found in const.go
 // Args are the additional arguments to the job
 type JobRequest struct {
-	Type string                 `json:"Type"`
+	Type string                 `json:"Type" example:"Simple"`
 	Args map[string]interface{} `json:"args"`
 }
 
@@ -29,8 +28,8 @@ type httpResponse struct {
 }
 
 type httpError struct {
-	JobID string `json:"jobID"`
-	Error error  `json:"error"`
+	JobID string `json:"jobID" example:"55e75f6c-24f8-49b5-9e62-a268db7370e9"`
+	Error string `json:"error" example:"Invalid JobID"`
 }
 
 var jobs map[uuid.UUID]JobInterface
@@ -62,7 +61,10 @@ func parseJobRequest(c *gin.Context) (*JobRequest, error) {
 // @ID submit-job
 // @Accept  json
 // @Produce  json
-// @Success 200 {object} httpResponse
+// @Param jobRequest body main.JobRequest true "Submit a job"
+// @Success 200 {object} main.httpResponse
+// @Failure 400 {object} main.httpError
+// @Failure 500 {object} main.httpError
 // @Router /submit [post]
 func submitJob(c *gin.Context) {
 	newJobID := uuid.New()
@@ -70,10 +72,9 @@ func submitJob(c *gin.Context) {
 	jobRequest, err := parseJobRequest(c)
 	if err != nil {
 		log.Println("Couldn't parse the job request")
-		// w.Write([]byte(marshalError(errors.New("Invalid Job request format"), "")))
 		c.JSON(http.StatusBadRequest, httpError{
 			"",
-			errors.New("Invalid Job request format"),
+			"Invalid Job request format",
 		})
 		return
 	}
@@ -91,18 +92,16 @@ func submitJob(c *gin.Context) {
 		if err != nil {
 			c.JSON(http.StatusBadRequest, httpError{
 				"",
-				errors.New("Invalid from_date format"),
+				"Invalid from_date format",
 			})
-			// w.Write([]byte(marshalError(errors.New("Invalid from_date format"), "")))
 			return
 		}
 		toDate, err := time.Parse(timeLayout, jobRequest.Args["to_date"].(string))
 		if err != nil {
 			c.JSON(http.StatusBadRequest, httpError{
 				"",
-				errors.New("Invalid to_date format"),
+				"Invalid to_date format",
 			})
-			// w.Write([]byte(marshalError(errors.New("Invalid to_date format"), "")))
 			return
 		}
 		newJob = &ExportJob{
@@ -117,7 +116,7 @@ func submitJob(c *gin.Context) {
 		log.Println("Invalid Job Type")
 		c.JSON(http.StatusBadRequest, httpError{
 			"",
-			errors.New("Invalid Job Type"),
+			"Invalid Job Type",
 		})
 		// w.Write([]byte(marshalError(errors.New("Invalid Job Type"), "")))
 		return
@@ -126,20 +125,19 @@ func submitJob(c *gin.Context) {
 	jobs[newJobID] = newJob
 	if err = newJob.start(); err != nil {
 		log.Printf("Failed to start the job: %s\nError: %s", newJobID.String(), err.Error())
-		// w.Write([]byte(marshalError(err, "")))
 		c.JSON(http.StatusInternalServerError, httpError{
 			"",
-			err,
+			err.Error(),
 		})
 		delete(jobs, newJobID)
 		return
 	}
 
-	res, err := json.Marshal(httpResponse{
+	res := httpResponse{
 		JobID:   newJobID,
 		Message: "Success",
 		Details: make(map[string]interface{}),
-	})
+	}
 	c.JSON(http.StatusOK, res)
 }
 
@@ -151,6 +149,8 @@ func submitJob(c *gin.Context) {
 // @Produce  json
 // @Param jobID path string true "Job ID"
 // @Success 200 {object} httpResponse
+// @Failure 404 {object} main.httpError
+// @Failure 500 {object} main.httpError
 // @Router /halt/{jobID} [get]
 func haltJob(c *gin.Context) {
 	jobID := c.Param("jobID")
@@ -159,16 +159,15 @@ func haltJob(c *gin.Context) {
 		log.Println("Error while parsing UUID from string: ", jobID)
 		c.JSON(http.StatusNotFound, httpError{
 			jobID,
-			errors.New("Invalid JobID"),
+			"Invalid JobID",
 		})
 		return
 	}
 	job, ok := jobs[jobUUID]
 	if !ok {
-		// w.Write([]byte(marshalError(errors.New("Invalid JobID"), jobID)))
 		c.JSON(http.StatusNotFound, httpError{
 			jobID,
-			errors.New("Invalid JobID"),
+			"Invalid JobID",
 		})
 		return
 	}
@@ -177,18 +176,16 @@ func haltJob(c *gin.Context) {
 		log.Printf("Failed to stop the job: %s\nError: %s", jobID, err.Error())
 		c.JSON(http.StatusInternalServerError, httpError{
 			jobID,
-			err,
+			err.Error(),
 		})
-		// w.Write([]byte(marshalError(err, jobID)))
 		return
 	}
-	res, err := json.Marshal(httpResponse{
+	res := httpResponse{
 		JobID:   jobUUID,
 		Message: "Success",
 		Details: make(map[string]interface{}),
-	})
+	}
 	log.Println("Halted job:", jobID)
-	// w.Write([]byte(res))
 	c.JSON(http.StatusOK, res)
 }
 
@@ -199,7 +196,9 @@ func haltJob(c *gin.Context) {
 // @Accept  json
 // @Produce  json
 // @Param jobID path string true "Job ID"
-// @Success 200 {object} httpResponse
+// @Success 200 {object} main.httpResponse
+// @Failure 404 {object} main.httpError
+// @Failure 500 {object} main.httpError
 // @Router /stop/{jobID} [get]
 func stopJob(c *gin.Context) {
 	jobID := c.Param("jobID")
@@ -208,7 +207,7 @@ func stopJob(c *gin.Context) {
 		log.Println("Error while parsing UUID from string: ", jobID)
 		c.JSON(http.StatusNotFound, httpError{
 			jobID,
-			errors.New("Invalid JobID"),
+			"Invalid JobID",
 		})
 		return
 	}
@@ -216,7 +215,7 @@ func stopJob(c *gin.Context) {
 	if !ok {
 		c.JSON(http.StatusNotFound, httpError{
 			jobID,
-			errors.New("Invalid JobID"),
+			"Invalid JobID",
 		})
 		return
 	}
@@ -224,17 +223,17 @@ func stopJob(c *gin.Context) {
 		log.Printf("Failed to stop the job: %s\nError: %s\n", jobID, err.Error())
 		c.JSON(http.StatusInternalServerError, httpError{
 			jobID,
-			err,
+			err.Error(),
 		})
 		return
 	}
 	job.clean()
 	delete(jobs, jobUUID)
-	res, err := json.Marshal(httpResponse{
+	res := httpResponse{
 		JobID:   jobUUID,
 		Message: "Success",
 		Details: make(map[string]interface{}),
-	})
+	}
 	log.Println("Stopped job: ", jobID)
 	c.JSON(http.StatusOK, res)
 }
@@ -246,7 +245,9 @@ func stopJob(c *gin.Context) {
 // @Accept  json
 // @Produce  json
 // @Param jobID path string true "Job ID"
-// @Success 200 {object} httpResponse
+// @Success 200 {object} main.httpResponse
+// @Failure 404 {object} main.httpError
+// @Failure 500 {object} main.httpError
 // @Router /resume/{jobID} [get]
 func resumeJob(c *gin.Context) {
 	jobID := c.Param("jobID")
@@ -255,7 +256,7 @@ func resumeJob(c *gin.Context) {
 		log.Println("Error while parsing UUID from string: ", jobID)
 		c.JSON(http.StatusNotFound, httpError{
 			jobID,
-			errors.New("Invalid JobID"),
+			"Invalid JobID",
 		})
 		return
 	}
@@ -263,7 +264,7 @@ func resumeJob(c *gin.Context) {
 	if !ok {
 		c.JSON(http.StatusNotFound, httpError{
 			jobID,
-			errors.New("Invalid JobID"),
+			"Invalid JobID",
 		})
 		return
 	}
@@ -271,15 +272,15 @@ func resumeJob(c *gin.Context) {
 		log.Printf("Failed to stop the job: %s\nError: %s\n", jobID, err.Error())
 		c.JSON(http.StatusInternalServerError, httpError{
 			jobID,
-			err,
+			err.Error(),
 		})
 		return
 	}
-	res, err := json.Marshal(httpResponse{
+	res := httpResponse{
 		JobID:   jobUUID,
 		Message: "Success",
 		Details: make(map[string]interface{}),
-	})
+	}
 	log.Println("Resumed Job:", jobID)
 	c.JSON(http.StatusOK, res)
 }
@@ -291,7 +292,9 @@ func resumeJob(c *gin.Context) {
 // @Accept  json
 // @Produce  json
 // @Param jobID path string true "Job ID"
-// @Success 200 {object} httpResponse
+// @Success 200 {object} main.httpResponse
+// @Failure 404 {object} main.httpError
+// @Failure 500 {object} main.httpError
 // @Router /details/{jobID} [get]
 func detailsJob(c *gin.Context) {
 	jobID := c.Param("jobID")
@@ -300,7 +303,7 @@ func detailsJob(c *gin.Context) {
 		log.Println("Error while parsing UUID from string: ", jobID)
 		c.JSON(http.StatusNotFound, httpError{
 			jobID,
-			errors.New("Invalid JobID"),
+			"Invalid JobID",
 		})
 		return
 	}
@@ -308,21 +311,21 @@ func detailsJob(c *gin.Context) {
 	if !ok {
 		c.JSON(http.StatusNotFound, httpError{
 			jobID,
-			errors.New("Invalid JobID"),
+			"Invalid JobID",
 		})
 		return
 	}
 	details := job.details()
-	res, err := json.Marshal(httpResponse{
+	res := httpResponse{
 		JobID:   jobUUID,
 		Message: "Success",
 		Details: details,
-	})
+	}
 	if err != nil {
 		log.Println("Couldn't marshal job details")
 		c.JSON(http.StatusInternalServerError, httpError{
 			"",
-			errors.New("Failed to fetch the details"),
+			"Failed to fetch the details",
 		})
 		return
 	}
