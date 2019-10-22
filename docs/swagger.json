@@ -1,0 +1,175 @@
+{
+    "swagger": "2.0",
+    "info": {
+        "description": "Job processing backend API for Atlan Collect",
+        "title": "Job submitting backend",
+        "contact": {},
+        "license": {},
+        "version": "0.1"
+    },
+    "paths": {
+        "/details/{jobID}": {
+            "get": {
+                "description": "Job processing backend API for Atlan Collect",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "summary": "Fetch details about a submitted job",
+                "operationId": "details-job",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Job ID",
+                        "name": "jobID",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/main.httpResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/halt/{jobID}": {
+            "get": {
+                "description": "Job processing backend API for Atlan Collect",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "summary": "Halt a running job",
+                "operationId": "halt-job",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Job ID",
+                        "name": "jobID",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/main.httpResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/resume/{jobID}": {
+            "get": {
+                "description": "Job processing backend API for Atlan Collect",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "summary": "Resume a pause/halted job",
+                "operationId": "resume-job",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Job ID",
+                        "name": "jobID",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/main.httpResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/stop/{jobID}": {
+            "get": {
+                "description": "Job processing backend API for Atlan Collect",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "summary": "Stop a  job",
+                "operationId": "stop-job",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Job ID",
+                        "name": "jobID",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/main.httpResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/submit": {
+            "post": {
+                "description": "Job processing backend API for Atlan Collect",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "summary": "Submit a job for processing",
+                "operationId": "submit-job",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/main.httpResponse"
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "definitions": {
+        "main.httpResponse": {
+            "type": "object",
+            "properties": {
+                "code": {
+                    "type": "integer",
+                    "example": 200
+                },
+                "details": {
+                    "type": "object"
+                },
+                "jobID": {
+                    "type": "string",
+                    "example": "55e75f6c-24f8-49b5-9e62-a268db7370e9"
+                },
+                "message": {
+                    "type": "string",
+                    "example": "Success"
+                }
+            }
+        }
+    }
+}

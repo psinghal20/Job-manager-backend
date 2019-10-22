@@ -1,0 +1,117 @@
+definitions:
+  main.httpResponse:
+    properties:
+      code:
+        example: 200
+        type: integer
+      details:
+        type: object
+      jobID:
+        example: 55e75f6c-24f8-49b5-9e62-a268db7370e9
+        type: string
+      message:
+        example: Success
+        type: string
+    type: object
+info:
+  contact: {}
+  description: Job processing backend API for Atlan Collect
+  license: {}
+  title: Job submitting backend
+  version: "0.1"
+paths:
+  /details/{jobID}:
+    get:
+      consumes:
+      - application/json
+      description: Job processing backend API for Atlan Collect
+      operationId: details-job
+      parameters:
+      - description: Job ID
+        in: path
+        name: jobID
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.httpResponse'
+      summary: Fetch details about a submitted job
+  /halt/{jobID}:
+    get:
+      consumes:
+      - application/json
+      description: Job processing backend API for Atlan Collect
+      operationId: halt-job
+      parameters:
+      - description: Job ID
+        in: path
+        name: jobID
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.httpResponse'
+      summary: Halt a running job
+  /resume/{jobID}:
+    get:
+      consumes:
+      - application/json
+      description: Job processing backend API for Atlan Collect
+      operationId: resume-job
+      parameters:
+      - description: Job ID
+        in: path
+        name: jobID
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.httpResponse'
+      summary: Resume a pause/halted job
+  /stop/{jobID}:
+    get:
+      consumes:
+      - application/json
+      description: Job processing backend API for Atlan Collect
+      operationId: stop-job
+      parameters:
+      - description: Job ID
+        in: path
+        name: jobID
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.httpResponse'
+      summary: Stop a  job
+  /submit:
+    post:
+      consumes:
+      - application/json
+      description: Job processing backend API for Atlan Collect
+      operationId: submit-job
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/main.httpResponse'
+      summary: Submit a job for processing
+swagger: "2.0"

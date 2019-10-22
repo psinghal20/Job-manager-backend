@@ -11,6 +11,8 @@ import (
 	"github.com/go-chi/chi"
 	"github.com/go-chi/chi/middleware"
 	"github.com/google/uuid"
+	_ "github.com/psinghal20/atlan-assignment/docs"
+	httpSwagger "github.com/swaggo/http-swagger"
 )
 
 // JobRequest represents the job submission request
@@ -19,6 +21,13 @@ import (
 type JobRequest struct {
 	Type string                 `json:"Type"`
 	Args map[string]interface{} `json:"args"`
+}
+
+type httpResponse struct {
+	Code    int                    `json:"code" example:"200"`
+	JobID   uuid.UUID              `json:"jobID" example:"55e75f6c-24f8-49b5-9e62-a268db7370e9"`
+	Message string                 `json:"message" example:"Success"`
+	Details map[string]interface{} `json:"details"`
 }
 
 var jobs map[uuid.UUID]JobInterface
@@ -46,6 +55,14 @@ func parseJobRequest(body io.ReadCloser) (*JobRequest, error) {
 	return jobRequest, nil
 }
 
+// submitJob godoc
+// @Summary Submit a job for processing
+// @Description Job processing backend API for Atlan Collect
+// @ID submit-job
+// @Accept  json
+// @Produce  json
+// @Success 200 {object} httpResponse
+// @Router /submit [post]
 func submitJob(w http.ResponseWriter, r *http.Request) {
 	newJobID := uuid.New()
 
@@ -97,13 +114,24 @@ func submitJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	res, err := json.Marshal(map[string]string{
-		"result": "Success",
-		"jobID":  newJobID.String(),
+	res, err := json.Marshal(httpResponse{
+		Code:    200,
+		JobID:   newJobID,
+		Message: "Success",
+		Details: make(map[string]interface{}),
 	})
 	w.Write(res)
 }
 
+// haltJob godoc
+// @Summary Halt a running job
+// @Description Job processing backend API for Atlan Collect
+// @ID halt-job
+// @Accept  json
+// @Produce  json
+// @Param jobID path string true "Job ID"
+// @Success 200 {object} httpResponse
+// @Router /halt/{jobID} [get]
 func haltJob(w http.ResponseWriter, r *http.Request) {
 	jobID := chi.URLParam(r, "jobID")
 	jobUUID, err := uuid.Parse(jobID)
@@ -123,14 +151,25 @@ func haltJob(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(marshalError(err, jobID)))
 		return
 	}
-	res, err := json.Marshal(map[string]string{
-		"result": "Success",
-		"jobID":  jobID,
+	res, err := json.Marshal(httpResponse{
+		Code:    200,
+		JobID:   jobUUID,
+		Message: "Success",
+		Details: make(map[string]interface{}),
 	})
 	log.Println("Halted job:", jobID)
 	w.Write([]byte(res))
 }
 
+// stopJob godoc
+// @Summary Stop a  job
+// @Description Job processing backend API for Atlan Collect
+// @ID stop-job
+// @Accept  json
+// @Produce  json
+// @Param jobID path string true "Job ID"
+// @Success 200 {object} httpResponse
+// @Router /stop/{jobID} [get]
 func stopJob(w http.ResponseWriter, r *http.Request) {
 	jobID := chi.URLParam(r, "jobID")
 	jobUUID, err := uuid.Parse(jobID)
@@ -151,14 +190,25 @@ func stopJob(w http.ResponseWriter, r *http.Request) {
 	}
 	job.clean()
 	delete(jobs, jobUUID)
-	res, err := json.Marshal(map[string]string{
-		"result": "Success",
-		"jobID":  jobID,
+	res, err := json.Marshal(httpResponse{
+		Code:    200,
+		JobID:   jobUUID,
+		Message: "Success",
+		Details: make(map[string]interface{}),
 	})
 	log.Println("Stopped job: ", jobID)
 	w.Write([]byte(res))
 }
 
+// resumeJob godoc
+// @Summary Resume a pause/halted job
+// @Description Job processing backend API for Atlan Collect
+// @ID resume-job
+// @Accept  json
+// @Produce  json
+// @Param jobID path string true "Job ID"
+// @Success 200 {object} httpResponse
+// @Router /resume/{jobID} [get]
 func resumeJob(w http.ResponseWriter, r *http.Request) {
 	jobID := chi.URLParam(r, "jobID")
 	jobUUID, err := uuid.Parse(jobID)
@@ -177,14 +227,25 @@ func resumeJob(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(marshalError(err, jobID)))
 		return
 	}
-	res, err := json.Marshal(map[string]string{
-		"result": "Success",
-		"jobID":  jobID,
+	res, err := json.Marshal(httpResponse{
+		Code:    200,
+		JobID:   jobUUID,
+		Message: "Success",
+		Details: make(map[string]interface{}),
 	})
 	log.Println("Resumed Job:", jobID)
 	w.Write([]byte(res))
 }
 
+// detailsJob godoc
+// @Summary Fetch details about a submitted job
+// @Description Job processing backend API for Atlan Collect
+// @ID details-job
+// @Accept  json
+// @Produce  json
+// @Param jobID path string true "Job ID"
+// @Success 200 {object} httpResponse
+// @Router /details/{jobID} [get]
 func detailsJob(w http.ResponseWriter, r *http.Request) {
 	jobID := chi.URLParam(r, "jobID")
 	jobUUID, err := uuid.Parse(jobID)
@@ -199,7 +260,12 @@ func detailsJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	details := job.details()
-	res, err := json.Marshal(details)
+	res, err := json.Marshal(httpResponse{
+		Code:    200,
+		JobID:   jobUUID,
+		Message: "Success",
+		Details: details,
+	})
 	if err != nil {
 		log.Println("Couldn't marshal job details")
 		w.Write([]byte(marshalError(errors.New("Failed to fetch the details"), jobID)))
@@ -208,11 +274,15 @@ func detailsJob(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(res))
 }
 
+// @title Job submitting backend
+// @version 0.1
+// @description Job processing backend API for Atlan Collect
 func main() {
 	// Setup jobs queue
 	jobs = make(map[uuid.UUID]JobInterface)
 	r := initRouter()
-	http.ListenAndServe(":8080", r)
+
+	http.ListenAndServe(":3333", r)
 }
 
 func initRouter() http.Handler {
@@ -224,5 +294,8 @@ func initRouter() http.Handler {
 	r.Get("/stop/{jobID}", stopJob)
 	r.Get("/resume/{jobID}", resumeJob)
 	r.Get("/details/{jobID}", detailsJob)
+	r.Get("/swagger/*", httpSwagger.Handler(
+		httpSwagger.URL("http://localhost:8080/swagger/doc.json"), //The url pointing to API definition"
+	))
 	return r
 }
