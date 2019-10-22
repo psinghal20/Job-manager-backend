@@ -3,16 +3,15 @@ package main
 import (
 	"encoding/json"
 	"errors"
-	"io"
 	"log"
 	"net/http"
 	"time"
 
-	"github.com/go-chi/chi"
-	"github.com/go-chi/chi/middleware"
+	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	_ "github.com/psinghal20/atlan-assignment/docs"
-	httpSwagger "github.com/swaggo/http-swagger"
+	swaggerFiles "github.com/swaggo/files"     // swagger embed files
+	ginSwagger "github.com/swaggo/gin-swagger" // gin-swagger middleware
 )
 
 // JobRequest represents the job submission request
@@ -24,10 +23,14 @@ type JobRequest struct {
 }
 
 type httpResponse struct {
-	Code    int                    `json:"code" example:"200"`
 	JobID   uuid.UUID              `json:"jobID" example:"55e75f6c-24f8-49b5-9e62-a268db7370e9"`
 	Message string                 `json:"message" example:"Success"`
 	Details map[string]interface{} `json:"details"`
+}
+
+type httpError struct {
+	JobID string `json:"jobID"`
+	Error error  `json:"error"`
 }
 
 var jobs map[uuid.UUID]JobInterface
@@ -40,16 +43,14 @@ func marshalError(err error, jobID string) []byte {
 	return buf
 }
 
-func parseJobRequest(body io.ReadCloser) (*JobRequest, error) {
-	decoder := json.NewDecoder(body)
+func parseJobRequest(c *gin.Context) (*JobRequest, error) {
 	jobRequest := &JobRequest{
 		"",
 		make(map[string]interface{}),
 	}
 
-	err := decoder.Decode(&jobRequest)
+	err := c.BindJSON(&jobRequest)
 	if err != nil {
-		log.Println("Couldn't parse the job request")
 		return nil, err
 	}
 	return jobRequest, nil
@@ -63,13 +64,17 @@ func parseJobRequest(body io.ReadCloser) (*JobRequest, error) {
 // @Produce  json
 // @Success 200 {object} httpResponse
 // @Router /submit [post]
-func submitJob(w http.ResponseWriter, r *http.Request) {
+func submitJob(c *gin.Context) {
 	newJobID := uuid.New()
 
-	jobRequest, err := parseJobRequest(r.Body)
+	jobRequest, err := parseJobRequest(c)
 	if err != nil {
 		log.Println("Couldn't parse the job request")
-		w.Write([]byte(marshalError(errors.New("Invalid Job request format"), "")))
+		// w.Write([]byte(marshalError(errors.New("Invalid Job request format"), "")))
+		c.JSON(http.StatusBadRequest, httpError{
+			"",
+			errors.New("Invalid Job request format"),
+		})
 		return
 	}
 
@@ -84,12 +89,20 @@ func submitJob(w http.ResponseWriter, r *http.Request) {
 	case Export:
 		fromDate, err := time.Parse(timeLayout, jobRequest.Args["from_date"].(string))
 		if err != nil {
-			w.Write([]byte(marshalError(errors.New("Invalid from_date format"), "")))
+			c.JSON(http.StatusBadRequest, httpError{
+				"",
+				errors.New("Invalid from_date format"),
+			})
+			// w.Write([]byte(marshalError(errors.New("Invalid from_date format"), "")))
 			return
 		}
 		toDate, err := time.Parse(timeLayout, jobRequest.Args["to_date"].(string))
 		if err != nil {
-			w.Write([]byte(marshalError(errors.New("Invalid to_date format"), "")))
+			c.JSON(http.StatusBadRequest, httpError{
+				"",
+				errors.New("Invalid to_date format"),
+			})
+			// w.Write([]byte(marshalError(errors.New("Invalid to_date format"), "")))
 			return
 		}
 		newJob = &ExportJob{
@@ -102,25 +115,32 @@ func submitJob(w http.ResponseWriter, r *http.Request) {
 		}
 	default:
 		log.Println("Invalid Job Type")
-		w.Write([]byte(marshalError(errors.New("Invalid Job Type"), "")))
+		c.JSON(http.StatusBadRequest, httpError{
+			"",
+			errors.New("Invalid Job Type"),
+		})
+		// w.Write([]byte(marshalError(errors.New("Invalid Job Type"), "")))
 		return
 	}
 
 	jobs[newJobID] = newJob
 	if err = newJob.start(); err != nil {
 		log.Printf("Failed to start the job: %s\nError: %s", newJobID.String(), err.Error())
-		w.Write([]byte(marshalError(err, "")))
+		// w.Write([]byte(marshalError(err, "")))
+		c.JSON(http.StatusInternalServerError, httpError{
+			"",
+			err,
+		})
 		delete(jobs, newJobID)
 		return
 	}
 
 	res, err := json.Marshal(httpResponse{
-		Code:    200,
 		JobID:   newJobID,
 		Message: "Success",
 		Details: make(map[string]interface{}),
 	})
-	w.Write(res)
+	c.JSON(http.StatusOK, res)
 }
 
 // haltJob godoc
@@ -132,33 +152,44 @@ func submitJob(w http.ResponseWriter, r *http.Request) {
 // @Param jobID path string true "Job ID"
 // @Success 200 {object} httpResponse
 // @Router /halt/{jobID} [get]
-func haltJob(w http.ResponseWriter, r *http.Request) {
-	jobID := chi.URLParam(r, "jobID")
+func haltJob(c *gin.Context) {
+	jobID := c.Param("jobID")
 	jobUUID, err := uuid.Parse(jobID)
 	if err != nil {
 		log.Println("Error while parsing UUID from string: ", jobID)
-		w.Write([]byte(marshalError(errors.New("Invalid JobID"), jobID)))
+		c.JSON(http.StatusNotFound, httpError{
+			jobID,
+			errors.New("Invalid JobID"),
+		})
 		return
 	}
 	job, ok := jobs[jobUUID]
 	if !ok {
-		w.Write([]byte(marshalError(errors.New("Invalid JobID"), jobID)))
+		// w.Write([]byte(marshalError(errors.New("Invalid JobID"), jobID)))
+		c.JSON(http.StatusNotFound, httpError{
+			jobID,
+			errors.New("Invalid JobID"),
+		})
 		return
 	}
 
 	if err = job.halt(); err != nil {
 		log.Printf("Failed to stop the job: %s\nError: %s", jobID, err.Error())
-		w.Write([]byte(marshalError(err, jobID)))
+		c.JSON(http.StatusInternalServerError, httpError{
+			jobID,
+			err,
+		})
+		// w.Write([]byte(marshalError(err, jobID)))
 		return
 	}
 	res, err := json.Marshal(httpResponse{
-		Code:    200,
 		JobID:   jobUUID,
 		Message: "Success",
 		Details: make(map[string]interface{}),
 	})
 	log.Println("Halted job:", jobID)
-	w.Write([]byte(res))
+	// w.Write([]byte(res))
+	c.JSON(http.StatusOK, res)
 }
 
 // stopJob godoc
@@ -170,34 +201,42 @@ func haltJob(w http.ResponseWriter, r *http.Request) {
 // @Param jobID path string true "Job ID"
 // @Success 200 {object} httpResponse
 // @Router /stop/{jobID} [get]
-func stopJob(w http.ResponseWriter, r *http.Request) {
-	jobID := chi.URLParam(r, "jobID")
+func stopJob(c *gin.Context) {
+	jobID := c.Param("jobID")
 	jobUUID, err := uuid.Parse(jobID)
 	if err != nil {
 		log.Println("Error while parsing UUID from string: ", jobID)
-		w.Write([]byte(marshalError(errors.New("Invalid JobID"), jobID)))
+		c.JSON(http.StatusNotFound, httpError{
+			jobID,
+			errors.New("Invalid JobID"),
+		})
 		return
 	}
 	job, ok := jobs[jobUUID]
 	if !ok {
-		w.Write([]byte(marshalError(errors.New("Invalid JobID"), jobID)))
+		c.JSON(http.StatusNotFound, httpError{
+			jobID,
+			errors.New("Invalid JobID"),
+		})
 		return
 	}
 	if err = job.stop(); err != nil {
 		log.Printf("Failed to stop the job: %s\nError: %s\n", jobID, err.Error())
-		w.Write([]byte(marshalError(err, jobID)))
+		c.JSON(http.StatusInternalServerError, httpError{
+			jobID,
+			err,
+		})
 		return
 	}
 	job.clean()
 	delete(jobs, jobUUID)
 	res, err := json.Marshal(httpResponse{
-		Code:    200,
 		JobID:   jobUUID,
 		Message: "Success",
 		Details: make(map[string]interface{}),
 	})
 	log.Println("Stopped job: ", jobID)
-	w.Write([]byte(res))
+	c.JSON(http.StatusOK, res)
 }
 
 // resumeJob godoc
@@ -209,32 +248,40 @@ func stopJob(w http.ResponseWriter, r *http.Request) {
 // @Param jobID path string true "Job ID"
 // @Success 200 {object} httpResponse
 // @Router /resume/{jobID} [get]
-func resumeJob(w http.ResponseWriter, r *http.Request) {
-	jobID := chi.URLParam(r, "jobID")
+func resumeJob(c *gin.Context) {
+	jobID := c.Param("jobID")
 	jobUUID, err := uuid.Parse(jobID)
 	if err != nil {
 		log.Println("Error while parsing UUID from string: ", jobID)
-		w.Write([]byte(marshalError(errors.New("Invalid JobID"), jobID)))
+		c.JSON(http.StatusNotFound, httpError{
+			jobID,
+			errors.New("Invalid JobID"),
+		})
 		return
 	}
 	job, ok := jobs[jobUUID]
 	if !ok {
-		w.Write([]byte(marshalError(errors.New("Invalid JobID"), jobID)))
+		c.JSON(http.StatusNotFound, httpError{
+			jobID,
+			errors.New("Invalid JobID"),
+		})
 		return
 	}
 	if err = job.resume(); err != nil {
 		log.Printf("Failed to stop the job: %s\nError: %s\n", jobID, err.Error())
-		w.Write([]byte(marshalError(err, jobID)))
+		c.JSON(http.StatusInternalServerError, httpError{
+			jobID,
+			err,
+		})
 		return
 	}
 	res, err := json.Marshal(httpResponse{
-		Code:    200,
 		JobID:   jobUUID,
 		Message: "Success",
 		Details: make(map[string]interface{}),
 	})
 	log.Println("Resumed Job:", jobID)
-	w.Write([]byte(res))
+	c.JSON(http.StatusOK, res)
 }
 
 // detailsJob godoc
@@ -246,32 +293,40 @@ func resumeJob(w http.ResponseWriter, r *http.Request) {
 // @Param jobID path string true "Job ID"
 // @Success 200 {object} httpResponse
 // @Router /details/{jobID} [get]
-func detailsJob(w http.ResponseWriter, r *http.Request) {
-	jobID := chi.URLParam(r, "jobID")
+func detailsJob(c *gin.Context) {
+	jobID := c.Param("jobID")
 	jobUUID, err := uuid.Parse(jobID)
 	if err != nil {
 		log.Println("Error while parsing UUID from string: ", jobID)
-		w.Write([]byte(marshalError(errors.New("Invalid JobID"), jobID)))
+		c.JSON(http.StatusNotFound, httpError{
+			jobID,
+			errors.New("Invalid JobID"),
+		})
 		return
 	}
 	job, ok := jobs[jobUUID]
 	if !ok {
-		w.Write([]byte(marshalError(errors.New("Invalid JobID"), jobID)))
+		c.JSON(http.StatusNotFound, httpError{
+			jobID,
+			errors.New("Invalid JobID"),
+		})
 		return
 	}
 	details := job.details()
 	res, err := json.Marshal(httpResponse{
-		Code:    200,
 		JobID:   jobUUID,
 		Message: "Success",
 		Details: details,
 	})
 	if err != nil {
 		log.Println("Couldn't marshal job details")
-		w.Write([]byte(marshalError(errors.New("Failed to fetch the details"), jobID)))
+		c.JSON(http.StatusInternalServerError, httpError{
+			"",
+			errors.New("Failed to fetch the details"),
+		})
 		return
 	}
-	w.Write([]byte(res))
+	c.JSON(http.StatusOK, res)
 }
 
 // @title Job submitting backend
@@ -282,20 +337,18 @@ func main() {
 	jobs = make(map[uuid.UUID]JobInterface)
 	r := initRouter()
 
-	http.ListenAndServe(":3333", r)
+	r.Run(":8080")
 }
 
-func initRouter() http.Handler {
-	r := chi.NewRouter()
-	r.Use(middleware.RequestID)
-	r.Use(middleware.Logger)
-	r.Post("/submit", submitJob)
-	r.Get("/halt/{jobID}", haltJob)
-	r.Get("/stop/{jobID}", stopJob)
-	r.Get("/resume/{jobID}", resumeJob)
-	r.Get("/details/{jobID}", detailsJob)
-	r.Get("/swagger/*", httpSwagger.Handler(
-		httpSwagger.URL("http://localhost:8080/swagger/doc.json"), //The url pointing to API definition"
-	))
+func initRouter() *gin.Engine {
+	r := gin.Default()
+	r.Use(gin.Logger())
+	r.Use(gin.Recovery())
+	r.POST("/submit", submitJob)
+	r.GET("/halt/:jobID", haltJob)
+	r.GET("/stop/:jobID", stopJob)
+	r.GET("/resume/:jobID", resumeJob)
+	r.GET("/details/:jobID", detailsJob)
+	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 	return r
 }
